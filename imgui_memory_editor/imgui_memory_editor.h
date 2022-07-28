@@ -89,7 +89,7 @@ struct MemoryEditor
     float           OptFooterExtraHeight;                       // = 0      // space to reserve at the bottom of the widget to add custom widgets
     ImU32           HighlightColor;                             //          // background color of highlighted bytes.
     ImU8            (*ReadFn)(const ImU8* data, size_t off);    // = 0      // optional handler to read bytes.
-    void            (*WriteFn)(ImU8* data, size_t off, ImU8 d); // = 0      // optional handler to write bytes.
+    void            (*WriteFn)(size_t off, ImU8 d);             // = 0      // optional handler to write bytes.
     bool            (*HighlightFn)(const ImU8* data, size_t off);//= 0      // optional handler to return Highlight property (to support non-contiguous highlighting).
 
     // [Internal State]
@@ -183,36 +183,13 @@ struct MemoryEditor
         s.WindowWidth = s.PosAsciiEnd + style.ScrollbarSize + style.WindowPadding.x * 2 + s.GlyphWidth;
     }
 
-    // Standalone Memory Editor window
-    void DrawWindow(const char* title, void* mem_data, size_t mem_size, size_t base_display_addr = 0x0000)
-    {
-        Sizes s;
-        CalcSizes(s, mem_size, base_display_addr);
-        ImGui::SetNextWindowSize(ImVec2(s.WindowWidth, s.WindowWidth * 0.60f), ImGuiCond_FirstUseEver);
-        ImGui::SetNextWindowSizeConstraints(ImVec2(0.0f, 0.0f), ImVec2(s.WindowWidth, FLT_MAX));
-
-        Open = true;
-        if (ImGui::Begin(title, &Open, ImGuiWindowFlags_NoScrollbar))
-        {
-            if (ImGui::IsWindowHovered(ImGuiHoveredFlags_RootAndChildWindows) && ImGui::IsMouseReleased(ImGuiMouseButton_Right))
-                ImGui::OpenPopup("context");
-            DrawContents(mem_data, mem_size, base_display_addr);
-            if (ContentsWidthChanged)
-            {
-                CalcSizes(s, mem_size, base_display_addr);
-                ImGui::SetWindowSize(ImVec2(s.WindowWidth, ImGui::GetWindowSize().y));
-            }
-        }
-        ImGui::End();
-    }
-
     // Memory Editor contents only
-    void DrawContents(void* mem_data_void, size_t mem_size, size_t base_display_addr = 0x0000)
+    void DrawContents(const void* mem_data_void, size_t mem_size, size_t base_display_addr = 0x0000)
     {
         if (Cols < 1)
             Cols = 1;
 
-        ImU8* mem_data = (ImU8*)mem_data_void;
+        const ImU8* mem_data = (const ImU8*)mem_data_void;
         Sizes s;
         CalcSizes(s, mem_size, base_display_addr);
         ImGuiStyle& style = ImGui::GetStyle();
@@ -240,8 +217,6 @@ struct MemoryEditor
 
         if (ReadOnly || DataEditingAddr >= mem_size)
             DataEditingAddr = (size_t)-1;
-        if (DataPreviewAddr >= mem_size)
-            DataPreviewAddr = (size_t)-1;
 
         size_t preview_data_type_size = OptShowDataPreview ? DataTypeGetSize(PreviewDataType) : 0;
 
@@ -354,12 +329,9 @@ struct MemoryEditor
                         if (data_editing_addr_next != (size_t)-1)
                             data_write = data_next = false;
                         unsigned int data_input_value = 0;
-                        if (data_write && sscanf(DataInputBuf, "%X", &data_input_value) == 1)
+                        if (WriteFn && data_write && sscanf(DataInputBuf, "%X", &data_input_value) == 1)
                         {
-                            if (WriteFn)
-                                WriteFn(mem_data, addr, (ImU8)data_input_value);
-                            else
-                                mem_data[addr] = (ImU8)data_input_value;
+                            WriteFn(addr, (ImU8)data_input_value);
                         }
                         ImGui::PopID();
                     }
@@ -452,7 +424,7 @@ struct MemoryEditor
         }
     }
 
-    void DrawOptionsLine(const Sizes& s, void* mem_data, size_t mem_size, size_t base_display_addr)
+    void DrawOptionsLine(const Sizes& s, const void* mem_data, size_t mem_size, size_t base_display_addr)
     {
         IM_UNUSED(mem_data);
         ImGuiStyle& style = ImGui::GetStyle();
@@ -502,7 +474,7 @@ struct MemoryEditor
         }
     }
 
-    void DrawPreviewLine(const Sizes& s, void* mem_data_void, size_t mem_size, size_t base_display_addr)
+    void DrawPreviewLine(const Sizes& s, const void* mem_data_void, size_t mem_size, size_t base_display_addr)
     {
         IM_UNUSED(base_display_addr);
         ImU8* mem_data = (ImU8*)mem_data_void;
